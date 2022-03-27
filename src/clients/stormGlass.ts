@@ -1,34 +1,11 @@
-import { AxiosStatic } from 'axios';
-
-export interface IStormGlassPointSource {
-  [key: string]: number;
-}
-
-export interface IStormGlassPoint {
-  readonly time: string;
-  readonly waveHeight: IStormGlassPointSource;
-  readonly waveDirection: IStormGlassPointSource;
-  readonly swellHeight: IStormGlassPointSource;
-  readonly swellDirection: IStormGlassPointSource;
-  readonly swellPeriod: IStormGlassPointSource;
-  readonly windDirection: IStormGlassPointSource;
-  readonly windSpeed: IStormGlassPointSource;
-}
-
-export interface IStormGlassForecastResponse {
-  hours: IStormGlassPoint[];
-}
-
-export interface IForecastPoint {
-  time: string;
-  waveHeight: number;
-  waveDirection: number;
-  swellHeight: number;
-  swellDirection: number;
-  swellPeriod: number;
-  windDirection: number;
-  windSpeed: number;
-}
+import { ClientRequestError } from '@src/util/errors/client-request-error';
+import { StormGlassResponseError } from '@src/util/errors/stormGlass-response-error';
+import { IForecastPoint } from '@src/util/interfaces/forecast-point';
+import { AxiosStatic, AxiosError } from 'axios';
+import {
+  IStormGlassForecastResponse,
+  IStormGlassPoint,
+} from '@src/util/interfaces/stormGlass-forecast-response';
 
 export class StormGlass {
   readonly stormGlassAPIParams =
@@ -41,11 +18,29 @@ export class StormGlass {
     lat: number,
     lng: number
   ): Promise<IForecastPoint[]> {
-    const response = await this.request.get<IStormGlassForecastResponse>(
-      `https://api.stormglass.io/v2/weather/point?params=${this.stormGlassAPIParams}&source=${this.stormGlassAPIParams}&end=1592113802&lat=${lat}&lng=${lng}`
-    );
+    try {
+      const response = await this.request.get<IStormGlassForecastResponse>(
+        `https://api.stormglass.io/v2/weather/point?params=${this.stormGlassAPIParams}&source=${this.stormGlassAPIParams}&end=1592113802&lat=${lat}&lng=${lng}`,
+        {
+          headers: {
+            Authorization: 'fake-token',
+          },
+        }
+      );
+      return this.normalizeResponse(response.data);
+    } catch (err: unknown) {
+      const axiosErr = err as AxiosError;
+      const error = err as Error;
 
-    return this.normalizeResponse(response.data);
+      if (axiosErr.response && axiosErr.response.status) {
+        throw new StormGlassResponseError(
+          `Error: ${JSON.stringify(axiosErr.response.data)} Code: ${
+            axiosErr.response.status
+          }`
+        );
+      }
+      throw new ClientRequestError(error.message);
+    }
   }
 
   private normalizeResponse(
